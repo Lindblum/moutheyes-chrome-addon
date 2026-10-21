@@ -9,14 +9,11 @@
       <h1>Moutheyes</h1>
       <button id="toggle" title="Turn Moutheyes on or off, on every page. Switching it on also starts this tab's video.">On</button>
     </header>
-    <div class="status-row">
-      <p id="status" class="status">Checking tab…</p>
-      <button id="video" class="small" hidden title="Moutheyes for this tab's main video (or hover a video and click its button)">Start video</button>
-    </div>
+    <p id="status" class="status">Checking tab…</p>
 
     <div class="row">
-      <label class="check" title="Moutheyes for videos: the button on a video when you hover it, and Alt+Shift+E."><input id="videos" type="checkbox" /> Videos</label>
       <label class="check" title="Finds the faces in pictures on pages, in the background, and shows them with moutheyes. Uses the GPU while it works; results are cached, so pictures seen before are instant."><input id="images" type="checkbox" /> Images</label>
+      <label class="check" title="Moutheyes for videos: each page's main video gets it on its own; the button on a video when you hover it, and Alt+Shift+E, pick others. Unticking it stops them all."><input id="videos" type="checkbox" /> Videos</label>
     </div>
 
     <label title="Size of each mouth relative to the eye it covers.">Mouth size <output for="mouthScale"></output>

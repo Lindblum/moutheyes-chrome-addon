@@ -29,31 +29,20 @@ button {
 button.on {
   background: #1a73e8;
 }
-button.busy {
-  opacity: 0.7;
-  cursor: progress;
-}
 button:disabled {
   background: #2a2b2f;
   color: #777;
   cursor: default;
 }
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 6px 0 10px;
-}
-.status-row button[hidden] {
-  display: none;
-}
-body.off .status-row ~ * {
+body.off .status ~ * {
   opacity: 0.5;
+}
+.status.busy {
+  opacity: 0.6;
 }
 .status {
   color: #9aa0a6;
-  margin: 0;
+  margin: 6px 0 10px;
   min-height: 1.4em;
 }
 label {

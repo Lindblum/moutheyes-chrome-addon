@@ -105,9 +105,11 @@ try {
     return v.play();
   });
 
-  const box = await toggle(page, '#plain');
-  const canvas = await page.waitForSelector('canvas.moutheyes-canvas', { timeout: 5000 });
-  console.log('Overlay canvas created.');
+  // Moutheyes is on, so the page's main video (the playing one) gets it without being asked.
+  const box = await (await page.$('#plain')).boundingBox();
+  const canvas = await page.waitForSelector('#plain + canvas.moutheyes-canvas', { timeout: 5000 });
+  if ((await page.$$('canvas.moutheyes-canvas')).length !== 1) throw new Error('more than one video started on its own');
+  console.log('Overlay canvas created on its own for the playing video.');
 
   let data = {};
   for (let i = 0; i < 20; i++) {
@@ -389,7 +391,7 @@ try {
     const tabId = await popup.evaluate(async () => (await chrome.tabs.query({ url: 'http://localhost/frames.html' }))[0].id);
     const ui = () => popup.evaluate(() => ({
       power: document.querySelector('#toggle').textContent,
-      video: document.querySelector('#video').hidden ? null : document.querySelector('#video').textContent,
+      videos: document.querySelector('#videos').checked,
       status: document.querySelector('#status').textContent,
     }));
     const openPopup = async () => {
@@ -408,27 +410,33 @@ try {
       if (!ok || (await canvases()) !== canvasCount) throw new Error(what);
     };
 
+    // The embedded video loads after the page, and still gets moutheyes on its own.
+    await fpage.bringToFront();
+    await player().waitForSelector('canvas.moutheyes-canvas', { timeout: 5000 });
+    await popup.bringToFront();
     let st = await openPopup();
     console.log('Popup on embedded-video page:', st);
-    if (st.power !== 'On' || st.video !== 'Start video') throw new Error('popup has no video button for a video in an embedded frame');
-    st = await click('#video');
-    await expect(st.video === 'Stop video', 1, 'popup video button did not turn on the embedded video');
+    if (st.power !== 'On' || !st.videos || !st.status.startsWith('Video on')) throw new Error('the video in an embedded frame did not start on its own');
     st = await click('#toggle');
-    await expect(st.power === 'Off' && st.video === null, 0, 'main switch did not turn moutheyes off');
+    await expect(st.power === 'Off' && st.status.includes('off'), 0, 'main switch did not turn moutheyes off');
     st = await click('#toggle');
-    await expect(st.power === 'On' && st.video === 'Stop video', 1, "main switch did not turn moutheyes back on with the tab's video");
-    await click('#video');
+    await expect(st.power === 'On' && st.status.startsWith('Video on'), 1, "main switch did not turn moutheyes on with the tab's video");
+    st = await click('#videos');
+    await expect(!st.videos, 0, 'unticking Videos did not stop the video');
+    st = await click('#videos');
+    await expect(st.videos && st.status.startsWith('Video on'), 1, "ticking Videos did not start the tab's video");
+    await click('#toggle');
     // A second click while a busy page is still answering the first must not undo it.
     player().evaluate(() => { const end = Date.now() + 1500; while (Date.now() < end); }).catch(() => {});
     await sleep(100);
-    await popup.click('#video');
+    await popup.click('#toggle');
     await sleep(200);
-    await popup.click('#video');
+    await popup.click('#toggle');
     await sleep(2500);
     st = await ui();
-    console.log('  double click while the page was busy:', st);
-    await expect(st.video === 'Stop video', 1, 'a double click on the video button left it off');
-    await click('#video');
+    console.log('  double click while the page was busy:', st, `canvases: ${await canvases()}`);
+    await expect(st.power === 'On', 1, 'a double click on the main switch undid the first');
+    await click('#videos');
 
     // Simulate a content script cut off from the extension: remove it from every frame.
     await popup.evaluate((id) => chrome.scripting.executeScript({
@@ -437,10 +445,9 @@ try {
     }), tabId);
     st = await openPopup();
     console.log('Popup after the content script was removed:', st);
-    if (st.video !== 'Start video') throw new Error('popup did not recover a tab without a content script');
-    st = await click('#video');
-    await expect(st.video === 'Stop video', 1, 'popup video button failed after re-injecting the content script');
-    await click('#video');
+    if (st.status.startsWith("Moutheyes can't")) throw new Error('popup did not recover a tab without a content script');
+    st = await click('#videos');
+    await expect(st.videos && st.status.startsWith('Video on'), 1, 'ticking Videos failed after re-injecting the content script');
     await host.evaluate(() => chrome.storage.local.set({ images: false })).catch(() => {});
     await popup.close();
     await fpage.close();

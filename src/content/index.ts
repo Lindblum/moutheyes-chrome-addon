@@ -11,6 +11,8 @@ const MIN_W = 200;
 const MIN_H = 112;
 /** How often (ms) a content script checks that the extension it belongs to is still loaded. */
 const ALIVE_POLL_MS = 2000;
+/** How often (ms) to look for a newly loaded video to start moutheyes on. */
+const AUTO_START_MS = 1000;
 
 /** What the popup calls in each frame (through chrome.scripting, in this isolated world). */
 export interface MoutheyesApi {
@@ -22,8 +24,6 @@ export interface MoutheyesApi {
   toggle(): FrameStatus;
   /** Turns moutheyes on for this frame's main video unless a video here already has it. */
   start(): FrameStatus;
-  /** Turns moutheyes off for every video in this frame. */
-  stop(): FrameStatus;
   /** Removes everything this content script added and stops it. */
   teardown(): void;
 }
@@ -85,6 +85,7 @@ function main(): MoutheyesApi {
     if (signal.aborted) return;
     listeners.abort();
     clearInterval(aliveTimer);
+    clearInterval(autoTimer);
     sessions.forEach((s) => s.stop());
     images?.stop();
     overlay?.dispose();
@@ -98,6 +99,30 @@ function main(): MoutheyesApi {
     return false;
   }
   const aliveTimer = window.setInterval(alive, ALIVE_POLL_MS);
+
+  /** Videos that failed to start: not tried again on their own. */
+  const skip = new WeakSet<HTMLVideoElement>();
+  /**
+   * Set when a video is turned off by hand: nothing starts on its own in this frame until a
+   * video is turned on by hand (otherwise turning one off would just move moutheyes to the next).
+   */
+  let autoPaused = false;
+
+  /**
+   * While moutheyes is on, the frame's main video gets it without being asked: a video loaded
+   * after the page (or after the site swapped its player for a new one) included. One per frame;
+   * the hover button and Alt+Shift+E pick another.
+   */
+  function autoStart() {
+    if (!videosOn() || autoPaused || sessions.size || document.hidden) return;
+    const video = candidates()
+      .filter((v) => !skip.has(v) && v.readyState >= 2 && prominence(v) > 0)
+      .sort((a, b) => prominence(b) - prominence(a))[0];
+    if (!video || !alive()) return;
+    if (!flip(video, false)) skip.add(video);
+    else if (video === hovered) ui().showButton(video, true);
+  }
+  const autoTimer = window.setInterval(autoStart, AUTO_START_MS);
 
   const ui = () => (overlay ??= new Overlay(toggle));
 
@@ -124,15 +149,18 @@ function main(): MoutheyesApi {
     return all.sort((a, b) => prominence(b) - prominence(a))[0] ?? null;
   }
 
+  /** Turns moutheyes on or off for this video, by hand (the button, the shortcut, the popup). */
   function toggle(video: HTMLVideoElement): boolean {
     if (!alive()) return false;
     const on = flip(video);
+    autoPaused = !on;
+    if (on) skip.delete(video);
     if (video === hovered) ui().showButton(video, on);
     return on;
   }
 
   /** Turns moutheyes on or off for this video. Returns whether it is now on. */
-  function flip(video: HTMLVideoElement): boolean {
+  function flip(video: HTMLVideoElement, announce = true): boolean {
     const existing = sessions.get(video);
     if (existing) {
       existing.stop();
@@ -143,7 +171,10 @@ function main(): MoutheyesApi {
     try {
       session = new Session(video, settings, ui(), (s) => {
         sessions.delete(s.video);
-        if (s.failure) lastError = s.failure;
+        if (s.failure) {
+          lastError = s.failure;
+          skip.add(s.video);
+        }
       });
       session.start();
     } catch (e) {
@@ -160,7 +191,7 @@ function main(): MoutheyesApi {
     }
     lastError = '';
     sessions.set(video, session);
-    ui().toast('Moutheyes on', 2000);
+    if (announce) ui().toast('Moutheyes on', 2000);
     return true;
   }
 
@@ -227,12 +258,9 @@ function main(): MoutheyesApi {
       return status();
     },
     start() {
+      autoPaused = false;
       const v = primary();
       if (v && videosOn() && !sessions.size) toggle(v);
-      return status();
-    },
-    stop() {
-      sessions.forEach((s) => toggle(s.video));
       return status();
     },
     teardown,

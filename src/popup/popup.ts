@@ -6,7 +6,6 @@ import { loadSettings, saveSettings, type Settings } from '../shared/settings';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const statusEl = $('status');
 const powerBtn = $<HTMLButtonElement>('toggle');
-const videoBtn = $<HTMLButtonElement>('video');
 
 const FORMAT: Partial<Record<keyof Settings, (v: number) => string>> = {
   mouthScale: (v) => `${v.toFixed(2)}×`,
@@ -24,7 +23,7 @@ async function tabId(): Promise<number | null> {
   return tab?.id ?? null;
 }
 
-type Command = 'status' | 'start' | 'stop';
+type Command = 'status' | 'start';
 
 /**
  * Runs a content-script command in the tab's frames (all of them, or the given ones) and returns
@@ -72,20 +71,16 @@ async function tabStatus(): Promise<FrameStatus | null> {
 }
 
 /**
- * Stops moutheyes on every video in the tab, or starts it on the tab's main video: the most
- * prominent one in any frame (a video scrolled out of view still counts, after any on screen).
- * Explicit start and stop rather than a toggle, so a second click can't undo the first.
+ * Starts moutheyes on the tab's main video, unless one already has it: the most prominent video
+ * in any frame (a video scrolled out of view still counts, after any on screen). A start rather
+ * than a toggle, so a repeated click can't undo it.
  */
-async function videoCommand(cmd: 'start' | 'stop'): Promise<void> {
+async function startVideo(): Promise<void> {
   const tab = await tabId();
   if (tab == null) return;
   try {
     const all = await frames(tab);
-    if (cmd === 'stop') {
-      const on = all.filter((f) => f.status.active).map((f) => f.frameId);
-      if (on.length) await inFrames(tab, 'stop', on);
-      return;
-    }
+    if (all.some((f) => f.status.active)) return;
     const target = all.filter((f) => f.status.videos > 0).sort((a, b) => b.status.score - a.status.score)[0];
     if (target) await inFrames(tab, 'start', [target.frameId]);
   } catch {
@@ -98,18 +93,12 @@ let videosOn = true;
 let imagesOn = false;
 /** While a click is being carried out (a busy page can take a while to answer). */
 let busy = false;
-/** What the video button last showed: whether the tab's video has moutheyes. */
-let playing = false;
 
 function showStatus(s: FrameStatus | null) {
   if (busy) return; // the click's own result is on its way
   powerBtn.textContent = enabled ? 'On' : 'Off';
   powerBtn.classList.toggle('on', enabled);
   document.body.classList.toggle('off', !enabled);
-  playing = !!s && s.active > 0;
-  videoBtn.hidden = !enabled || !videosOn || !s || !s.videos;
-  videoBtn.textContent = playing ? 'Stop video' : 'Start video';
-  videoBtn.classList.toggle('on', playing);
   if (!enabled) {
     statusEl.textContent = 'Moutheyes is off on every page.';
     return;
@@ -183,25 +172,29 @@ async function init() {
       refreshing = false;
     }
   };
-  /** Shows a click's effect at once, ignores further clicks until it's done, then shows the result. */
-  const act = async (btn: HTMLButtonElement, pending: string, work: () => Promise<void>) => {
-    if (busy) return;
+  /** Carries out a click, ignoring further clicks on the main switch until it's done, then shows the result. */
+  const act = async (work: () => Promise<void>) => {
     busy = true;
     generation++;
-    btn.textContent = pending;
-    btn.classList.add('busy');
+    statusEl.classList.add('busy');
     try {
       await work();
     } finally {
       busy = false;
       generation++;
-      btn.classList.remove('busy');
+      statusEl.classList.remove('busy');
       await refresh(true);
     }
   };
+  /** After a setting reaches the pages: start this tab's video if videos are now on. */
+  const settled = async () => {
+    await new Promise((r) => setTimeout(r, 100)); // let the pages see the setting first
+    if (enabled && videosOn) await startVideo();
+  };
+  // Ticking Videos starts this tab's video; unticking it stops every video (the pages see to that).
   $('videos').addEventListener('input', (e) => {
     videosOn = (e.target as HTMLInputElement).checked;
-    refresh();
+    act(settled);
   });
   $('images').addEventListener('input', (e) => {
     imagesOn = (e.target as HTMLInputElement).checked;
@@ -213,19 +206,14 @@ async function init() {
   });
   // The main switch: everything, on every page. Switching it on also starts this tab's video.
   powerBtn.addEventListener('click', () => {
+    if (busy) return;
     enabled = !enabled;
+    powerBtn.textContent = enabled ? 'On' : 'Off';
     powerBtn.classList.toggle('on', enabled);
-    act(powerBtn, enabled ? 'On' : 'Off', async () => {
+    act(async () => {
       await saveSettings({ enabled });
-      if (enabled && videosOn) {
-        await new Promise((r) => setTimeout(r, 100)); // let the pages see the setting first
-        await videoCommand('start');
-      }
+      await settled();
     });
-  });
-  videoBtn.addEventListener('click', () => {
-    const start = !playing;
-    act(videoBtn, start ? 'Starting…' : 'Stopping…', () => videoCommand(start ? 'start' : 'stop'));
   });
   refresh();
   showCache();

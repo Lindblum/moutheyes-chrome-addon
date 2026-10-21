@@ -43,11 +43,14 @@ Open `chrome://extensions` (or `brave://extensions`), turn on **Developer mode**
 
 The toolbar popup's **On/Off** switch turns the whole extension on or off, on every page;
 switching it on also starts the current tab's main video. Below it are a checkbox each for
-**Videos** (on by default) and **Images** (off).
+**Images** (off by default) and **Videos** (on).
 
-With Videos on, hover a video and click **Moutheyes**, or press **Alt+Shift+E**. Fullscreen
-works too. The popup's **Start video / Stop video** button acts on the most prominent video on
-the page (including one inside an embedded player or a shadow DOM); if it can't start, the popup
+While Moutheyes is on with Videos ticked, each page's main video gets moutheyes on its own:
+the most prominent one, including one loaded later, one inside an embedded player or a shadow
+DOM, and a new player a site swaps in (background tabs wait until they're shown). Unticking
+Videos stops every video. To pick another video, hover it and click **Moutheyes**, or press
+**Alt+Shift+E**. Fullscreen works too. Turning a video off by hand keeps that page's videos off
+until you turn one on again (or switch Moutheyes off and on). If a video can't start, the popup
 says why. Tabs that were open before the extension was installed
 or reloaded work without a refresh: the background script (and, failing that, the popup) gives
 them a fresh content script. The popup also sets mouth size, the most faces per video or picture (1–4),
