@@ -46,15 +46,22 @@ export class Overlay {
     this.layer.append(this.button, this.toastEl);
     root.append(style, this.layer);
     this.reparent();
-    document.addEventListener('fullscreenchange', () => this.reparent());
+    document.addEventListener('fullscreenchange', this.reparent);
+  }
+
+  dispose() {
+    document.removeEventListener('fullscreenchange', this.reparent);
+    clearTimeout(this.toastTimer);
+    clearTimeout(this.hideTimer);
+    this.host.remove();
   }
 
   /** Keep the overlay inside the fullscreen element so it stays visible there. */
-  private reparent() {
+  private reparent = () => {
     const fs = document.fullscreenElement;
     const parent = fs && !(fs instanceof HTMLVideoElement) && !(fs instanceof HTMLCanvasElement) ? fs : document.documentElement;
     if (this.host.parentNode !== parent) parent.appendChild(this.host);
-  }
+  };
 
   showButton(video: HTMLVideoElement, active: boolean) {
     const r = video.getBoundingClientRect();

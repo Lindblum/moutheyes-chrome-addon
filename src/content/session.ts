@@ -1,6 +1,12 @@
 // One active moutheyes video: an overlay canvas over a <video>, its capture loop and its share
 // of the face tracker. Each frame is shown only once it comes back from the tracker with its
 // faces, so the mouths always sit exactly where the eyes are in that frame.
+//
+// Other extensions can use the result in place of the video's own pixels (the 2D-3D Video
+// Converter does): while it's on, the video carries data-moutheyes="<canvas id>", and the video
+// fires "moutheyes:change" when that turns on or off and "moutheyes:frame" after every new
+// frame. The canvas holds the whole frame at the video's resolution, letterboxed by CSS
+// object-fit like the video itself.
 import { Renderer, TaintedVideoError } from '../render/renderer';
 import type { FaceGeom } from '../shared/face';
 import type { Settings } from '../shared/settings';
@@ -23,7 +29,6 @@ export class Session {
   private reset = true;
   private stopped = false;
   private faces: FaceGeom[] = [];
-  private lastBox = '';
   private trackMsAvg = 0;
   private trackFailed = '';
   private statsEl: HTMLDivElement | null = null;
@@ -40,6 +45,11 @@ export class Session {
     this.renderer = new Renderer(this.canvas);
   }
 
+  /** Why the session stopped on its own, if it did. */
+  get failure(): string {
+    return this.trackFailed;
+  }
+
   get faceCount(): number {
     return this.faces.length;
   }
@@ -47,6 +57,7 @@ export class Session {
   start() {
     if (this.video.mediaKeys) throw new TaintedVideoError('encrypted media');
     this.canvas.className = 'moutheyes-canvas';
+    this.canvas.id = `moutheyes-${this.stream}`;
     // Hidden until the first tracked frame is ready; the video shows through until then.
     this.canvas.style.cssText = 'position:absolute;pointer-events:none;display:block;background:#000;margin:0;padding:0;border:0;visibility:hidden;';
     const z = getComputedStyle(this.video).zIndex;
@@ -75,6 +86,10 @@ export class Session {
     this.listeners.forEach((off) => off());
     this.renderer.dispose();
     this.canvas.remove();
+    if (this.video.dataset.moutheyes === this.canvas.id) {
+      delete this.video.dataset.moutheyes;
+      this.video.dispatchEvent(new Event('moutheyes:change'));
+    }
     this.statsEl?.remove();
     this.onEnd(this);
   }
@@ -109,6 +124,7 @@ export class Session {
 
   private onDiscontinuity() {
     this.newFrame = true;
+    this.renderer.clearHistory();
     this.reset = true;
   }
 
@@ -116,7 +132,7 @@ export class Session {
     this.raf = requestAnimationFrame(this.tick);
     const v = this.video;
     if (!v.isConnected) return this.stop();
-    if (this.layout() && this.renderer.hasFrame) this.draw();
+    this.layout();
     if (v.readyState < 2 || !v.videoWidth) return;
     const frameChanged = this.newFrame || !('requestVideoFrameCallback' in v);
     if (frameChanged && !this.capturing && tracker.state === 'ready' && !tracker.busy) this.capture();
@@ -128,6 +144,7 @@ export class Session {
     this.capturing = true;
     this.newFrame = false;
     const reset = this.reset;
+    const time = v.currentTime;
     this.reset = false;
     const k = Math.min(1, MAX_CAPTURE_SIDE / Math.max(v.videoWidth, v.videoHeight));
     const s = this.settings;
@@ -136,11 +153,12 @@ export class Session {
       const bitmap = await createImageBitmap(v, k < 1
         ? { resizeWidth: Math.round(v.videoWidth * k), resizeHeight: Math.round(v.videoHeight * k), resizeQuality: 'medium' }
         : {});
-      result = await tracker.track(this.stream, bitmap, v.currentTime, reset, {
+      result = await tracker.track(this.stream, bitmap, time, reset, {
         mouthScale: s.mouthScale,
         maxFaces: s.maxFaces,
         smoothing: s.smoothing,
         skinMatch: s.skinMatch,
+        objectFilter: s.objectFilter,
       });
     } catch (e) {
       console.warn('[moutheyes] frame capture failed:', e);
@@ -150,10 +168,16 @@ export class Session {
     if (!result) return;
     if (this.stopped) return result.bitmap.close();
     try {
+      const c = this.canvas;
+      if (c.width !== result.bitmap.width || c.height !== result.bitmap.height) {
+        c.width = result.bitmap.width;
+        c.height = result.bitmap.height;
+      }
       this.renderer.uploadFrame(result.bitmap);
     } catch (e) {
       if (e instanceof TaintedVideoError) {
         this.overlay.toast("This video is protected (DRM or cross-origin), so the browser won't let the extension read its pixels.", 7000);
+        this.trackFailed = "this video is protected (DRM or cross-origin), so the browser won't let the extension read its pixels";
         return this.stop();
       }
       throw e;
@@ -163,51 +187,32 @@ export class Session {
     this.faces = result.faces;
     if (result.searching && this.video.paused) this.newFrame = true;
     this.trackMsAvg = this.trackMsAvg ? this.trackMsAvg * 0.9 + result.ms * 0.1 : result.ms;
-    this.draw();
-    this.canvas.style.visibility = 'visible';
-  }
-
-  private draw() {
-    this.renderer.render(this.faces, this.contentRect());
+    const echo = s.mouthEcho;
+    if (echo > 0) this.renderer.record(this.faces, time);
+    else this.renderer.clearHistory();
+    // Exposed for debugging and the e2e test: the shown frame's video time, and its echoed eyes.
+    this.canvas.dataset.frameTime = time.toFixed(3);
+    this.canvas.dataset.echoedEyes = String(this.renderer.render(this.faces, { time, echo, skinGate: s.skinMatch, filter: s.objectFilter }));
     this.renderFrames++;
-  }
-
-  /** Positions and sizes the canvas over the video. Returns true if anything changed. */
-  private layout(): boolean {
-    const v = this.video;
-    const c = this.canvas;
-    const w = v.offsetWidth;
-    const h = v.offsetHeight;
-    c.style.left = `${v.offsetLeft}px`;
-    c.style.top = `${v.offsetTop}px`;
-    c.style.width = `${w}px`;
-    c.style.height = `${h}px`;
-    const dpr = window.devicePixelRatio || 1;
-    const bw = Math.min(3840, Math.max(2, Math.round(w * dpr)));
-    const bh = Math.min(2160, Math.max(2, Math.round(h * dpr)));
-    const key = `${bw}x${bh}:${v.offsetLeft},${v.offsetTop}:${getComputedStyle(v).objectFit}`;
-    if (c.width !== bw || c.height !== bh) {
-      c.width = bw;
-      c.height = bh;
+    if (this.video.dataset.moutheyes !== this.canvas.id) {
+      this.canvas.style.visibility = 'visible';
+      this.video.dataset.moutheyes = this.canvas.id;
+      this.video.dispatchEvent(new Event('moutheyes:change'));
     }
-    if (key === this.lastBox) return false;
-    this.lastBox = key;
-    return true;
+    this.video.dispatchEvent(new Event('moutheyes:frame'));
   }
 
-  /** Where the video picture sits inside the canvas, honoring object-fit. */
-  private contentRect(): [number, number, number, number] {
+  /** Keeps the canvas over the video, letterboxed the same way. */
+  private layout() {
     const v = this.video;
-    const bw = this.canvas.width;
-    const bh = this.canvas.height;
-    const fit = getComputedStyle(v).objectFit;
-    if (fit === 'fill' || !v.videoWidth) return [0, 0, 1, 1];
-    const scale = fit === 'cover'
-      ? Math.max(bw / v.videoWidth, bh / v.videoHeight)
-      : Math.min(bw / v.videoWidth, bh / v.videoHeight);
-    const w = (v.videoWidth * scale) / bw;
-    const h = (v.videoHeight * scale) / bh;
-    return [(1 - w) / 2, (1 - h) / 2, w, h];
+    const st = this.canvas.style;
+    const cs = getComputedStyle(v);
+    st.left = `${v.offsetLeft}px`;
+    st.top = `${v.offsetTop}px`;
+    st.width = `${v.offsetWidth}px`;
+    st.height = `${v.offsetHeight}px`;
+    st.objectFit = cs.objectFit;
+    st.objectPosition = cs.objectPosition;
   }
 
   private updateStats() {

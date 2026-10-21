@@ -1,6 +1,7 @@
 // Face geometry for moutheyes, ported from moutheyes-py's moutheye_frame(): where each mouth
 // copy goes, its soft mask, and the skin-colour model that gates and tints it. The renderer's
-// shader mirrors maskAlpha(), rgbToLab() and skinProb(); keep them in step.
+// shader mirrors maskAlpha(), rgbToLab() and skinProb() (and adds the lip-colour object filter);
+// keep them in step.
 
 // MediaPipe face-mesh landmark indices
 export const LIPS_OUTER = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291,
@@ -9,6 +10,12 @@ export const MOUTH_L = 61;
 export const MOUTH_R = 291;
 /** (outer corner, inner corner, top lid, bottom lid) for each eye */
 export const EYES = [[33, 133, 159, 145], [263, 362, 386, 374]] as const;
+/** Inner lip line, upper then lower, corner to corner. */
+export const INNER_UPPER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308];
+export const INNER_LOWER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308];
+/** (outer, inner) lip point pairs; the lip colour is sampled midway between them. */
+export const LIP_BAND = [[185, 191], [40, 80], [39, 81], [37, 82], [0, 13], [267, 312], [269, 311], [270, 310], [409, 415],
+  [146, 95], [91, 88], [181, 178], [84, 87], [17, 14], [314, 317], [405, 402], [321, 318], [375, 324]];
 /** Upper cheeks, forehead and nose bridge: skin on most faces, clear of lips, eyes, brows and beards. */
 export const SKIN_POINTS = [50, 280, 101, 330, 117, 346, 151, 108, 337, 6, 197];
 export const MAX_HULL = 24;
@@ -25,22 +32,49 @@ export interface SkinModel {
   margin: number;
 }
 
-export interface EyeGeom {
+/** A mouth as it was in one frame. */
+export interface MouthGeom {
+  /** Centre (mean of the outer lip points), corner-to-corner width and angle (radians). */
+  c: [number, number];
+  w: number;
+  ang: number;
+  /** Convex hull of the outer lips, flat x, y pairs, frame pixels. */
+  hull: number[];
+  /** The mouth opening (inside the inner lip line), flat x, y pairs, frame pixels. */
+  inner: number[];
+}
+
+/** Where a mouth copy goes: an eye's centre, corner-to-corner width and the eye-line angle. */
+export interface EyeSpot {
+  c: [number, number];
+  w: number;
+  ang: number;
+}
+
+export interface Placement {
   /** Destination (eye) -> source (mouth) affine, row-major 2x3. */
   inv: [number, number, number, number, number, number];
   /** Destination quad covering the mouth copy: 4 corners as x, y pairs. */
   quad: number[];
-  /** Colour gain matching the copy to the skin around the eye. */
-  gain: [number, number, number];
 }
 
 export interface FaceGeom {
-  /** Convex hull of the outer lips, flat x, y pairs, frame pixels. */
-  hull: number[];
-  /** Mouth width (corner to corner). */
-  mw: number;
-  eyes: EyeGeom[];
+  /** Stable while the face stays tracked. */
+  id: number;
+  mouth: MouthGeom;
+  eyes: EyeSpot[];
+  /** Mouth size relative to the eye. */
+  scale: number;
+  /** Per eye, the colour gain matching the copy to the skin around it. */
+  gains: [number, number, number][];
   skin: SkinModel | null;
+  /** Lip colour, for the object filter. */
+  lips: SkinModel | null;
+  /**
+   * False while the face is held in place undetected without a skin check that it's still
+   * there: its eyes then show the live mouth, not echoes of its old one.
+   */
+  echo: boolean;
 }
 
 const pt = (L: Landmarks, i: number): [number, number] => [L[2 * i], L[2 * i + 1]];
@@ -125,53 +159,70 @@ export function sdPolygon(poly: number[], x: number, y: number): number {
   return s * Math.sqrt(d);
 }
 
-/**
- * Where each eye gets its mouth: the mouth is scaled to mouthScale x the eye's width, turned to
- * the eye line (both eyes share its angle so the pair looks consistent) and centred on the eye.
- */
-export function faceGeometry(L: Landmarks, mouthScale: number): Omit<FaceGeom, 'skin'> {
+export function mouthGeom(L: Landmarks): MouthGeom {
   const ml = pt(L, MOUTH_L);
   const mr = pt(L, MOUTH_R);
-  const mw = mouthWidth(L);
-  const mouthAng = Math.atan2(mr[1] - ml[1], mr[0] - ml[0]);
   const lips = LIPS_OUTER.map((i) => pt(L, i));
-  const mc = mean(lips);
-  const hullPts = convexHull(lips).slice(0, MAX_HULL);
-  const hull = hullPts.flat();
+  return {
+    c: mean(lips),
+    w: mouthWidth(L),
+    ang: Math.atan2(mr[1] - ml[1], mr[0] - ml[0]),
+    hull: convexHull(lips).slice(0, MAX_HULL).flat(),
+    inner: [...INNER_UPPER, ...INNER_LOWER.slice(1, -1).reverse()].flatMap((i) => pt(L, i)),
+  };
+}
 
-  const m = maskParams(mw);
-  const grow = m.pad + 3 * m.sigma;
-  const xs = hullPts.map((p) => p[0]);
-  const ys = hullPts.map((p) => p[1]);
-  const box: [number, number][] = [
-    [Math.min(...xs) - grow, Math.min(...ys) - grow],
-    [Math.max(...xs) + grow, Math.min(...ys) - grow],
-    [Math.max(...xs) + grow, Math.max(...ys) + grow],
-    [Math.min(...xs) - grow, Math.max(...ys) + grow],
-  ];
+/** Both eyes share the eye-line angle so the pair looks consistent. */
+export function eyeSpots(L: Landmarks): EyeSpot[] {
+  const lines = EYES.map((e) => mean([pt(L, e[0]), pt(L, e[1])]));
+  const ang = Math.atan2(lines[1][1] - lines[0][1], lines[1][0] - lines[0][0]);
+  return EYES.map(([o, i, top, bot]) => ({
+    c: mean([pt(L, o), pt(L, i), pt(L, top), pt(L, bot)]),
+    w: dist(pt(L, o), pt(L, i)),
+    ang,
+  }));
+}
 
-  const eCenters = EYES.map((e) => mean([pt(L, e[0]), pt(L, e[1])]));
-  const eyeAng = Math.atan2(eCenters[1][1] - eCenters[0][1], eCenters[1][0] - eCenters[0][0]);
-  const eyes = EYES.map(([o, i, top, bot]): EyeGeom => {
-    const ew = dist(pt(L, o), pt(L, i));
-    const ec = mean([pt(L, o), pt(L, i), pt(L, top), pt(L, bot)]);
-    const s = (mouthScale * ew) / mw;
-    // src -> dest: rotate by (eyeAng - mouthAng) and scale about the mouth centre, then move it onto the eye.
-    const th = eyeAng - mouthAng;
-    const a = s * Math.cos(th);
-    const b = s * Math.sin(th);
-    const fwd = (p: [number, number]) => [
-      a * (p[0] - mc[0]) - b * (p[1] - mc[1]) + ec[0],
-      b * (p[0] - mc[0]) + a * (p[1] - mc[1]) + ec[1],
-    ];
-    // dest -> src
-    const k = 1 / (a * a + b * b);
-    const ia = a * k;
-    const ib = b * k;
-    const inv: EyeGeom['inv'] = [ia, ib, mc[0] - ia * ec[0] - ib * ec[1], -ib, ia, mc[1] + ib * ec[0] - ia * ec[1]];
-    return { inv, quad: box.flatMap(fwd), gain: [1, 1, 1] };
-  });
-  return { hull, mw, eyes };
+/** The square of the frame that holds everything a mouth's mask can reach: x, y, side. */
+export function mouthBox(m: MouthGeom): [number, number, number] {
+  const mp = maskParams(m.w);
+  const grow = mp.pad + 3 * mp.sigma;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < m.hull.length; i += 2) {
+    x0 = Math.min(x0, m.hull[i]);
+    x1 = Math.max(x1, m.hull[i]);
+    y0 = Math.min(y0, m.hull[i + 1]);
+    y1 = Math.max(y1, m.hull[i + 1]);
+  }
+  const side = Math.max(x1 - x0, y1 - y0) + 2 * grow;
+  return [(x0 + x1 - side) / 2, (y0 + y1 - side) / 2, side];
+}
+
+/**
+ * Where a mouth goes on an eye: scaled to `scale` x the eye's width, turned to the eye line and
+ * centred on the eye. The mouth may be from an earlier frame than the eye.
+ */
+export function placeMouth(m: MouthGeom, e: EyeSpot, scale: number): Placement {
+  const s = (scale * e.w) / m.w;
+  // src -> dest: rotate by (eye angle - mouth angle) and scale about the mouth centre, then move it onto the eye.
+  const th = e.ang - m.ang;
+  const a = s * Math.cos(th);
+  const b = s * Math.sin(th);
+  const [mx, my] = m.c;
+  const [ex, ey] = e.c;
+  const fwd = (x: number, y: number) => [a * (x - mx) - b * (y - my) + ex, b * (x - mx) + a * (y - my) + ey];
+  // dest -> src
+  const k = 1 / (a * a + b * b);
+  const ia = a * k;
+  const ib = b * k;
+  const [bx, by, side] = mouthBox(m);
+  return {
+    inv: [ia, ib, mx - ia * ex - ib * ey, -ib, ia, my + ib * ex - ia * ey],
+    quad: [...fwd(bx, by), ...fwd(bx + side, by), ...fwd(bx + side, by + side), ...fwd(bx, by + side)],
+  };
 }
 
 /** sRGB (0..255) to Lab scaled like OpenCV's 8-bit COLOR_RGB2LAB (L 0..255, a/b offset by 128). */

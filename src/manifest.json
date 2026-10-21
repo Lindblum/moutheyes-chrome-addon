@@ -1,13 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "Video Moutheyes",
+  "name": "Moutheyes",
   "version": "0.1.0",
-  "description": "Tracks faces in any HTML5 video in real time and puts each face's mouth over its eyes.",
+  "description": "Puts each face's own mouth over its eyes, in videos in real time and in the pictures on pages.",
   "permissions": [
-    "storage"
+    "storage",
+    "unlimitedStorage",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "<all_urls>"
   ],
   "action": {
-    "default_title": "Video Moutheyes",
+    "default_title": "Moutheyes",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

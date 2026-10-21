@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Video Moutheyes test page</title>
+    <title>Moutheyes test page</title>
     <style>
       body { background: #111; color: #ddd; font: 14px system-ui, sans-serif; margin: 24px; }
       section { margin-bottom: 32px; }
@@ -11,7 +11,7 @@
     </style>
   </head>
   <body>
-    <h1>Video Moutheyes test page</h1>
+    <h1>Moutheyes test page</h1>
     <p>Hover a video and click <b>Moutheyes</b>, or press Alt+Shift+E.
       Media: <code>npm run fetch-test-media</code> downloads <code>media/faces.mp4</code> (needs ffmpeg).</p>
 
@@ -28,6 +28,24 @@
     <section>
       <h2>3. Stretched (object-fit: fill)</h2>
       <video id="fill" class="fill" src="media/faces.mp4" controls loop muted playsinline></video>
+    </section>
+
+    <section id="pictures">
+      <h2>4. Pictures (Images on in the popup)</h2>
+      <img id="pic-face" src="media/stills/face.jpg" width="480" alt="face" />
+      <img id="pic-face2" src="media/stills/face2.jpg" width="480" alt="second face" />
+      <img id="pic-small" src="media/stills/small-face.jpg" width="480" alt="small face in a wide shot" />
+      <img id="pic-portrait" src="media/stills/portrait.png" width="200" style="background: magenta" alt="transparent portrait" />
+      <img id="pic-noface" src="media/stills/noface.png" width="320" alt="no face" />
+      <img id="pic-thumb" src="media/stills/face.jpg" width="40" alt="too small to convert" />
+      <img id="pic-anim" src="media/stills/anim.gif" width="480" alt="animated GIF with a face" />
+      <img id="pic-apng" src="media/stills/anim.png" width="320" alt="animated PNG with a face" />
+      <img id="pic-anim-alpha" src="media/stills/anim-alpha.gif" width="200" style="background: magenta" alt="transparent animated GIF" />
+      <img id="pic-anim-noface" src="media/stills/anim-noface.gif" width="320" alt="animated GIF, no face" />
+      <picture>
+        <source srcset="media/stills/face2.jpg" type="image/jpeg" />
+        <img id="pic-in-picture" src="media/stills/noface.png" width="320" alt="picture element (source wins)" />
+      </picture>
     </section>
   </body>
 </html>

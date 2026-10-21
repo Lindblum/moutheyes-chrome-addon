@@ -47,6 +47,7 @@ const common = {
 const configs = [
   { ...common, entryPoints: ['src/content/index.ts'], outfile: 'dist/content.js', format: 'iife' },
   { ...common, entryPoints: ['src/popup/popup.ts'], outfile: 'dist/popup/popup.js', format: 'iife' },
+  { ...common, entryPoints: ['src/background.ts'], outfile: 'dist/background.js', format: 'iife' },
   { ...common, entryPoints: ['src/tracker/host.ts'], outfile: 'dist/tracker/host.js', format: 'esm' },
 ];
 

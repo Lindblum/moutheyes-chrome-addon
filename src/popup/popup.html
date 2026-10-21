@@ -6,32 +6,48 @@
   </head>
   <body>
     <header>
-      <h1>Video Moutheyes</h1>
-      <button id="toggle" title="Turn moutheyes on or off for this video">Off</button>
+      <h1>Moutheyes</h1>
+      <button id="toggle" title="Turn Moutheyes on or off, on every page. Switching it on also starts this tab's video.">On</button>
     </header>
-    <p id="status" class="status">Checking tab…</p>
+    <div class="status-row">
+      <p id="status" class="status">Checking tab…</p>
+      <button id="video" class="small" hidden title="Moutheyes for this tab's main video (or hover a video and click its button)">Start video</button>
+    </div>
+
+    <div class="row">
+      <label class="check" title="Moutheyes for videos: the button on a video when you hover it, and Alt+Shift+E."><input id="videos" type="checkbox" /> Videos</label>
+      <label class="check" title="Finds the faces in pictures on pages, in the background, and shows them with moutheyes. Uses the GPU while it works; results are cached, so pictures seen before are instant."><input id="images" type="checkbox" /> Images</label>
+    </div>
 
     <label title="Size of each mouth relative to the eye it covers.">Mouth size <output for="mouthScale"></output>
       <input id="mouthScale" type="range" min="0.8" max="2.5" step="0.05" />
     </label>
 
-    <label title="How many faces per video get moutheyes. More faces cost a little more GPU time.">Faces
-      <select id="maxFaces">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-      </select>
+    <label title="How many faces per video get moutheyes. Each face costs about 20 ms of GPU time per frame.">Max Faces <output for="maxFaces"></output>
+      <input id="maxFaces" type="range" min="1" max="4" step="1" />
     </label>
 
     <label title="Steadies the mouths when a face is still. Higher is steadier but trails a little behind quick movement.">Smoothing <output for="smoothing"></output>
       <input id="smoothing" type="range" min="0" max="0.95" step="0.05" />
     </label>
 
+    <label title="Each eye's mouth plays later than the real one: the eye on the left of the picture by this much, the right eye by twice as much, like a round.">Mouth echo <output for="mouthEcho"></output>
+      <input id="mouthEcho" type="range" min="0" max="0.5" step="0.05" />
+    </label>
+
+    <label title="Leaves whatever is neither skin nor lips (captions, a hand, a microphone) out of the mouth copies. The mouth opening is exempt, for teeth and tongue. High values also cut out mustaches.">Object filter <output for="objectFilter"></output>
+      <input id="objectFilter" type="range" min="0" max="1" step="0.05" />
+    </label>
+
     <label class="check" title="Feathers the mouths only into skin and matches their tone to the skin around each eye.">
       <input id="skinMatch" type="checkbox" /> Blend into skin
     </label>
     <label class="check"><input id="showStats" type="checkbox" /> Show stats overlay</label>
+
+    <div class="cache">
+      <span id="cacheStats">Image cache: …</span>
+      <button id="clearCache" class="small" title="Forget which pictures have faces and delete the stored moutheyes pictures.">Clear</button>
+    </div>
 
     <footer>
       <kbd>Alt+Shift+E</kbd> toggles moutheyes on the video under the mouse

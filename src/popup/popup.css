@@ -29,14 +29,31 @@ button {
 button.on {
   background: #1a73e8;
 }
+button.busy {
+  opacity: 0.7;
+  cursor: progress;
+}
 button:disabled {
   background: #2a2b2f;
   color: #777;
   cursor: default;
 }
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+.status-row button[hidden] {
+  display: none;
+}
+body.off .status-row ~ * {
+  opacity: 0.5;
+}
 .status {
   color: #9aa0a6;
-  margin: 6px 0 10px;
+  margin: 0;
   min-height: 1.4em;
 }
 label {
@@ -46,18 +63,10 @@ label {
 label.check {
   margin: 6px 0;
 }
-select,
 input[type='range'] {
   display: block;
   width: 100%;
   margin-top: 3px;
-}
-select {
-  background: #2a2b2f;
-  color: inherit;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 3px;
 }
 output {
   float: right;
@@ -73,6 +82,24 @@ kbd {
   border-radius: 3px;
   padding: 0 3px;
 }
-.status.warn {
-  color: #f6c344;
+.row {
+  display: flex;
+  gap: 20px;
+}
+.cache {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+  color: #9aa0a6;
+  font-size: 11px;
+}
+button.small {
+  min-width: 0;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 500;
 }
