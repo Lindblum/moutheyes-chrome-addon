@@ -1,0 +1,24 @@
+{
+  "name": "video-moutheyes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome/Brave extension that puts each face's mouth over its eyes in any HTML5 video, in real time.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test-page": "npx --yes http-server test -p 8080 -c-1",
+    "fetch-test-media": "node scripts/fetch-test-media.mjs",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.5",
+    "esbuild": "^0.28.2",
+    "puppeteer-core": "^25.13.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.1"
+  }
+}

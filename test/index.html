@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Video Moutheyes test page</title>
+    <style>
+      body { background: #111; color: #ddd; font: 14px system-ui, sans-serif; margin: 24px; }
+      section { margin-bottom: 32px; }
+      .letterbox { width: 800px; height: 600px; background: #222; }
+      .fill { width: 640px; height: 480px; object-fit: fill; }
+    </style>
+  </head>
+  <body>
+    <h1>Video Moutheyes test page</h1>
+    <p>Hover a video and click <b>Moutheyes</b>, or press Alt+Shift+E.
+      Media: <code>npm run fetch-test-media</code> downloads <code>media/faces.mp4</code> (needs ffmpeg).</p>
+
+    <section>
+      <h2>1. Plain video (16:9, native controls)</h2>
+      <video id="plain" src="media/faces.mp4" width="960" height="400" controls loop muted playsinline></video>
+    </section>
+
+    <section>
+      <h2>2. Letterboxed (object-fit: contain in a 4:3 box)</h2>
+      <video id="letterbox" class="letterbox" src="media/faces.mp4" controls loop muted playsinline></video>
+    </section>
+
+    <section>
+      <h2>3. Stretched (object-fit: fill)</h2>
+      <video id="fill" class="fill" src="media/faces.mp4" controls loop muted playsinline></video>
+    </section>
+  </body>
+</html>

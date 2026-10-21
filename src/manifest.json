@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Video Moutheyes",
+  "version": "0.1.0",
+  "description": "Tracks faces in any HTML5 video in real time and puts each face's mouth over its eyes.",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_title": "Video Moutheyes",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "tracker/host.html",
+        "tracker/host.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
