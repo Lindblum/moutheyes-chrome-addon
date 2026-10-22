@@ -452,6 +452,25 @@ try {
     await popup.close();
     await fpage.close();
   }
+  // Single-page sites (YouTube): a video turned off by hand stays off on that address, but the
+  // next address starts afresh; and a player the site hides gives up moutheyes.
+  {
+    const spa = await browser.newPage();
+    await spa.goto(url, { waitUntil: 'load' });
+    await spa.evaluate(() => document.querySelector('#plain').play());
+    await spa.waitForSelector('#plain + canvas.moutheyes-canvas', { timeout: 8000 });
+    await toggle(spa, '#plain');
+    await sleep(2500);
+    const count = () => spa.$$eval('canvas.moutheyes-canvas', (c) => c.length);
+    if ((await count()) !== 0) throw new Error('a video turned off by hand started again on its own');
+    await spa.evaluate(() => history.pushState({}, '', '?next'));
+    await spa.waitForSelector('#plain + canvas.moutheyes-canvas', { timeout: 5000 });
+    console.log('After moving to a new address, the video started on its own again.');
+    await spa.evaluate(() => (document.querySelector('#plain').style.display = 'none'));
+    await spa.waitForFunction(() => !document.querySelector('#plain + canvas.moutheyes-canvas'), { timeout: 8000 });
+    console.log('A hidden player gave up its moutheyes.');
+    await spa.close();
+  }
   console.log('Saved test/out/{pictures,moutheyes,big-mouths,no-skin-match,echo,echo-off,plain,letterbox,object-filter-*}.png');
 } catch (e) {
   failed = true;

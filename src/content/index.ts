@@ -13,6 +13,8 @@ const MIN_H = 112;
 const ALIVE_POLL_MS = 2000;
 /** How often (ms) to look for a newly loaded video to start moutheyes on. */
 const AUTO_START_MS = 1000;
+/** A video with moutheyes that has been out of sight for this many checks in a row is stopped. */
+const UNSEEN_CHECKS = 3;
 
 /** What the popup calls in each frame (through chrome.scripting, in this isolated world). */
 export interface MoutheyesApi {
@@ -100,13 +102,23 @@ function main(): MoutheyesApi {
   }
   const aliveTimer = window.setInterval(alive, ALIVE_POLL_MS);
 
-  /** Videos that failed to start: not tried again on their own. */
-  const skip = new WeakSet<HTMLVideoElement>();
   /**
-   * Set when a video is turned off by hand: nothing starts on its own in this frame until a
-   * video is turned on by hand (otherwise turning one off would just move moutheyes to the next).
+   * Videos that failed to start, with what they were playing then: not tried again on their own
+   * until they play something else (players like YouTube Shorts reuse one video element for
+   * everything, ads included).
    */
-  let autoPaused = false;
+  const failed = new WeakMap<HTMLVideoElement, string>();
+  const hasFailed = (v: HTMLVideoElement) => failed.get(v) === v.currentSrc;
+  /**
+   * The page address when a video was turned off by hand: nothing starts on its own there until
+   * a video is turned on by hand (otherwise turning one off would just move moutheyes to the
+   * next). Moving on to another address (sites like YouTube never reload) starts afresh.
+   */
+  let autoPausedAt: string | null = null;
+  /** Checks in a row each video with moutheyes has been out of sight. */
+  const unseen = new WeakMap<HTMLVideoElement, number>();
+  /** Videos that got moutheyes on their own (not by hand), so it may move to a better one. */
+  const auto = new WeakSet<HTMLVideoElement>();
 
   /**
    * While moutheyes is on, the frame's main video gets it without being asked: a video loaded
@@ -114,13 +126,31 @@ function main(): MoutheyesApi {
    * the hover button and Alt+Shift+E pick another.
    */
   function autoStart() {
-    if (!videosOn() || autoPaused || sessions.size || document.hidden) return;
-    const video = candidates()
-      .filter((v) => !skip.has(v) && v.readyState >= 2 && prominence(v) > 0)
+    if (!videosOn() || document.hidden) return;
+    const all = candidates();
+    // A player the site has hidden (YouTube keeps its main player around while Shorts plays)
+    // keeps no slot: it's stopped once it has been out of sight for a few seconds.
+    for (const [v, s] of sessions) {
+      const n = all.includes(v) && prominence(v) > 0 ? 0 : (unseen.get(v) ?? 0) + 1;
+      unseen.set(v, n);
+      if (n >= UNSEEN_CHECKS) s.stop();
+    }
+    if (autoPausedAt === location.href) return;
+    const video = all
+      .filter((v) => !hasFailed(v) && v.readyState >= 2 && prominence(v) > 0)
       .sort((a, b) => prominence(b) - prominence(a))[0];
-    if (!video || !alive()) return;
-    if (!flip(video, false)) skip.add(video);
-    else if (video === hovered) ui().showButton(video, true);
+    if (!video || sessions.has(video) || !alive()) return;
+    if (sessions.size) {
+      // Taken: moutheyes moves only from a paused video that got it on its own to a playing one.
+      const [current] = sessions.keys();
+      if (sessions.size > 1 || !auto.has(current) || !current.paused || video.paused) return;
+      sessions.get(current)!.stop();
+    }
+    if (!flip(video, false)) failed.set(video, video.currentSrc);
+    else {
+      auto.add(video);
+      if (video === hovered) ui().showButton(video, true);
+    }
   }
   const autoTimer = window.setInterval(autoStart, AUTO_START_MS);
 
@@ -153,8 +183,9 @@ function main(): MoutheyesApi {
   function toggle(video: HTMLVideoElement): boolean {
     if (!alive()) return false;
     const on = flip(video);
-    autoPaused = !on;
-    if (on) skip.delete(video);
+    auto.delete(video);
+    autoPausedAt = on ? null : location.href;
+    if (on) failed.delete(video);
     if (video === hovered) ui().showButton(video, on);
     return on;
   }
@@ -171,20 +202,22 @@ function main(): MoutheyesApi {
     try {
       session = new Session(video, settings, ui(), (s) => {
         sessions.delete(s.video);
+        unseen.delete(s.video);
         if (s.failure) {
           lastError = s.failure;
-          skip.add(s.video);
+          failed.set(s.video, s.video.currentSrc);
         }
       });
       session.start();
     } catch (e) {
       session?.stop();
+      // Started on its own: the popup says why it failed, without a toast over every ad.
       if (e instanceof TaintedVideoError) {
         lastError = "this video is protected (DRM), so the browser won't let the extension read its pixels";
-        ui().toast("This video is protected (DRM), so the browser won't let the extension read its pixels.", 7000);
+        if (announce) ui().toast("This video is protected (DRM), so the browser won't let the extension read its pixels.", 7000);
       } else {
         lastError = e instanceof Error ? e.message : String(e);
-        ui().toast(`Moutheyes failed to start: ${lastError}`, 7000);
+        if (announce) ui().toast(`Moutheyes failed to start: ${lastError}`, 7000);
         console.error('[moutheyes]', e);
       }
       return false;
@@ -258,7 +291,7 @@ function main(): MoutheyesApi {
       return status();
     },
     start() {
-      autoPaused = false;
+      autoPausedAt = null;
       const v = primary();
       if (v && videosOn() && !sessions.size) toggle(v);
       return status();
