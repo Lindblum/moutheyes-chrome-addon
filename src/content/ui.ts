@@ -66,10 +66,11 @@ export class Overlay {
   showButton(video: HTMLVideoElement, active: boolean) {
     const r = video.getBoundingClientRect();
     this.buttonTarget = video;
-    this.button.textContent = active ? 'Moutheyes: on' : 'Moutheyes';
+    this.button.textContent = active ? 'Moutheyes: On' : 'Moutheyes: Off';
     this.button.classList.toggle('on', active);
+    // Top left, one row down: the 2D-3D Video Converter's button (same size) takes the first row.
     this.button.style.left = `${Math.max(4, r.left + 12)}px`;
-    this.button.style.top = `${Math.max(4, r.top + 12)}px`;
+    this.button.style.top = `${Math.max(4, r.top + 12) + this.button.offsetHeight + 6}px`;
     this.button.classList.add('show');
     clearTimeout(this.hideTimer);
     this.hideTimer = window.setTimeout(() => this.hideButton(), 2500);

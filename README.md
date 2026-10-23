@@ -18,7 +18,7 @@ In `brave://extensions` (or `chrome://extensions`), turn on **Developer mode**, 
 
 - **On/Off** in the popup turns the extension on or off on every page.
 - **Videos:** each page's main video gets moutheyes on its own. To pick another, hover it and
-  click **Moutheyes**, or press **Alt+Shift+E**. Turning a video off by hand keeps the page's
+  click **Moutheyes: Off**, or press **Alt+Shift+E**. Turning a video off by hand keeps the page's
   videos off until you turn one on or move to another address.
 - **Images:** pictures with faces near the viewport are converted in the background, including
   animated GIF/APNG/WebP (output as GIF). Unticking puts the originals back.
