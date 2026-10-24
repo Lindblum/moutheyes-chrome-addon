@@ -165,10 +165,7 @@ function main(): MoutheyesApi {
 
   /** How much of a video is on screen, counting playing videos double. */
   function prominence(v: HTMLVideoElement): number {
-    const r = v.getBoundingClientRect();
-    const w = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
-    const h = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
-    return w * h * (v.paused ? 1 : 2);
+    return onScreen(v.getBoundingClientRect()) * (v.paused ? 1 : 2);
   }
 
   /** The video a shortcut or popup click should act on: the one under the mouse, else the most prominent. */
@@ -275,10 +272,28 @@ function main(): MoutheyesApi {
       active: sessions.size,
       faces,
       images: images?.count ?? 0,
+      blockedImages: images?.blockedCounts ?? { access: 0, login: 0 },
+      frameOrigins: isTop ? frameOrigins() : undefined,
       score: main ? prominence(main) : 0,
       buildId: __BUILD_ID__,
       error: lastError || undefined,
     };
+  }
+
+  /** Origins of the visible embedded frames big enough to hold a video. */
+  function frameOrigins(): string[] {
+    const origins = new Set<string>();
+    for (const f of document.querySelectorAll('iframe')) {
+      const r = f.getBoundingClientRect();
+      if (r.width < MIN_W || r.height < MIN_H || !onScreen(r)) continue;
+      try {
+        const u = new URL(f.src, location.href);
+        if (u.protocol === 'http:' || u.protocol === 'https:') origins.add(u.origin);
+      } catch {
+        // no usable src
+      }
+    }
+    return [...origins];
   }
 
   const api: MoutheyesApi = {
@@ -299,6 +314,13 @@ function main(): MoutheyesApi {
     teardown,
   };
   return api;
+}
+
+/** How much of this rectangle is on screen (px²). */
+function onScreen(r: DOMRect): number {
+  const w = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
+  const h = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+  return w * h;
 }
 
 /** Shadow roots on the page, found at most once a second (walking every element is not free). */

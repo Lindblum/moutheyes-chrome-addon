@@ -1,7 +1,7 @@
 // Content-script side of the face tracker: owns the hidden host iframe, keeps at most one video
 // frame in flight so tracking never queues up behind playback, and passes pictures to convert.
 import type { FaceGeom } from '../shared/face';
-import type { FromHost, ImageOptions, ImageResult, ToHost, TrackOptions } from '../shared/protocol';
+import type { FromHost, HostTokenMessage, ImageOptions, ImageResult, ToHost, TrackOptions } from '../shared/protocol';
 
 export interface TrackResult {
   bitmap: ImageBitmap;
@@ -57,12 +57,20 @@ class TrackerBridge {
       iframe.style.cssText =
         'position:fixed!important;left:-10px!important;top:-10px!important;width:1px!important;' +
         'height:1px!important;opacity:0!important;pointer-events:none!important;border:0!important;';
-      iframe.addEventListener('load', () => {
+      iframe.addEventListener('load', async () => {
+        // The host only accepts a connection with a token registered first (see background.ts).
+        const token = crypto.randomUUID();
+        const msg: HostTokenMessage = { type: 'host-token', token };
+        try {
+          await chrome.runtime.sendMessage(msg);
+        } catch {
+          return resolve(); // the extension was reloaded; this script is on its way out
+        }
         const channel = new MessageChannel();
         this.port = channel.port1;
         this.port.onmessage = (e: MessageEvent<FromHost>) => this.onMessage(e.data);
         const origin = new URL(chrome.runtime.getURL('')).origin;
-        iframe.contentWindow!.postMessage({ type: 'moutheyes-connect' }, origin, [channel.port2]);
+        iframe.contentWindow!.postMessage({ type: 'moutheyes-connect', token }, origin, [channel.port2]);
         resolve();
       });
       (document.body ?? document.documentElement).appendChild(iframe);

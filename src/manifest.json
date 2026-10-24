@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Moutheyes",
-  "version": "0.1.0",
   "description": "Puts each face's own mouth over its eyes, in videos in real time and in the pictures on pages.",
+  "minimum_chrome_version": "120",
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -37,8 +37,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "tracker/host.html",
-        "tracker/host.js"
+        "tracker/host.html"
       ],
       "matches": [
         "<all_urls>"

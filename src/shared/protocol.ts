@@ -27,7 +27,14 @@ export interface ImageResult {
   cached: boolean;
   /** Why the picture couldn't be used. */
   error?: string;
+  /**
+   * Left alone because the extension may not read it: 'access', no site access to where it's
+   * from; 'login', its site wants a login (the extension fetches pictures without cookies).
+   */
+  blocked?: Blocked;
 }
+
+export type Blocked = 'access' | 'login';
 
 export type ToHost =
   /** Loads the face landmarkers (for video; pictures load them only when they need them). */
@@ -52,6 +59,12 @@ export type FromHost =
   | { type: 'frame-error'; id: number; bitmap: ImageBitmap | null; message: string }
   | ({ type: 'image-done'; id: number } & ImageResult);
 
+/**
+ * Extension messages to the background script that guard the host connection: the content script
+ * registers a one-time token, and the host page checks the token a connection brings.
+ */
+export type HostTokenMessage = { type: 'host-token'; token: string } | { type: 'host-token-check'; token: string };
+
 /** What a frame's content script reports to the popup (see MoutheyesApi in content/index.ts). */
 export interface FrameStatus {
   videos: number;
@@ -60,6 +73,13 @@ export interface FrameStatus {
   faces: number;
   /** Pictures on the page shown with moutheyes. */
   images: number;
+  /** Pictures left alone because the extension may not read them (see ImageResult.blocked). */
+  blockedImages: Record<Blocked, number>;
+  /**
+   * Top frame only: origins of the embedded frames big enough to hold a video, so the popup can
+   * tell which ones Moutheyes has no site access to.
+   */
+  frameOrigins?: string[];
   /** How prominent the frame's main video is (on-screen area, doubled if playing); 0: none. */
   score: number;
   /** Build of the content script that answered. */

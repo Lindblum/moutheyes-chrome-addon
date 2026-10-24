@@ -1,6 +1,6 @@
 // Bundles the extension into ./dist. Usage: node build.mjs [--watch]
 import * as esbuild from 'esbuild';
-import { cp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 
 const watch = process.argv.includes('--watch');
 const MP_WASM = 'node_modules/@mediapipe/tasks-vision/wasm';
@@ -21,7 +21,10 @@ async function copyStatic() {
   await mkdir('dist/tracker', { recursive: true });
   await mkdir('dist/popup', { recursive: true });
   await mkdir('dist/models', { recursive: true });
-  await cp('src/manifest.json', 'dist/manifest.json');
+  // The version lives in package.json only.
+  const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+  const manifest = JSON.parse(await readFile('src/manifest.json', 'utf8'));
+  await writeFile('dist/manifest.json', JSON.stringify({ ...manifest, version }, null, 2));
   await cp('src/tracker/host.html', 'dist/tracker/host.html');
   await cp('src/popup/popup.html', 'dist/popup/popup.html');
   await cp('src/popup/popup.css', 'dist/popup/popup.css');
@@ -33,6 +36,42 @@ async function copyStatic() {
   await cp(MODEL, `dist/${MODEL}`);
 }
 
+/**
+ * MediaPipe Tasks has a built-in usage logger that posts timings to Google every minute. This
+ * extension promises that nothing leaves the browser, so the logger is switched off in the bundle
+ * (it then stops at its first flush, as it does when a post fails). The build fails if a
+ * MediaPipe update changes the code this matches, rather than shipping the logger.
+ */
+const LOG_URL = 'https://odml.pa.googleapis.com/v1/log';
+const noTelemetry = {
+  name: 'no-mediapipe-telemetry',
+  setup(build) {
+    build.onLoad({ filter: /@mediapipe[\\/]tasks-vision[\\/]vision_bundle\.mjs$/ }, async (args) => {
+      const src = await readFile(args.path, 'utf8');
+      const patches = [
+        [`"${LOG_URL}"`, '""'],
+        [/flush\((\w),(\w)\)\{if\(this\.error\)/g, 'flush($1,$2){if(this.error??=Error("logging disabled"))'],
+      ];
+      let out = src;
+      for (const [from, to] of patches) {
+        const n = typeof from === 'string' ? out.split(from).length - 1 : (out.match(from) ?? []).length;
+        if (n !== 1) throw new Error(`MediaPipe telemetry patch: expected 1 match for ${from}, found ${n}`);
+        out = out.replace(from, to);
+      }
+      return { contents: out, loader: 'js' };
+    });
+  },
+};
+
+/** Fails the build if any shipped script still names a telemetry endpoint. */
+async function checkNoTelemetry() {
+  for (const f of await readdir('dist', { recursive: true })) {
+    if (f.endsWith('.js') && (await readFile(`dist/${f}`, 'utf8')).includes('odml.pa.googleapis.com')) {
+      throw new Error(`dist/${f} still contains MediaPipe's telemetry endpoint`);
+    }
+  }
+}
+
 const common = {
   bundle: true,
   target: 'chrome120',
@@ -40,6 +79,7 @@ const common = {
   sourcemap: watch ? 'inline' : false,
   minify: !watch,
   legalComments: 'none',
+  plugins: [noTelemetry],
   // Lets the popup detect a page still running a content script from an older build.
   define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
 };
@@ -59,4 +99,5 @@ if (watch) {
   console.log('Watching… (static files are copied once; restart to pick up html/css/manifest changes)');
 } else {
   await Promise.all(configs.map((c) => esbuild.build(c)));
+  await checkNoTelemetry();
 }

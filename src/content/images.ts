@@ -2,7 +2,7 @@
 // (and its cache, shared by all tabs) make moutheyes versions of the ones near the viewport that
 // have faces, then shows those in their place. It's slow on purpose: only while the browser is
 // idle, the tab is visible and no moutheyes video is playing.
-import type { ImageOptions } from '../shared/protocol';
+import type { Blocked, ImageOptions } from '../shared/protocol';
 import type { Settings } from '../shared/settings';
 import { tracker } from '../tracker/bridge';
 
@@ -49,6 +49,8 @@ export class ImageConverter {
   private converted = new Map<HTMLImageElement, Converted>();
   /** Results for this page by URL + settings, so repeats (thumbnails, carousels) skip the round trip. */
   private results = new Map<string, Blob | null>();
+  /** Pictures on this page the extension may not read, by URL (see ImageResult.blocked). */
+  private blocked = new Map<string, Blocked>();
   /** Object URLs of our own output, which must never be taken for a picture to convert. */
   private ours = new Set<string>();
   private io: IntersectionObserver;
@@ -98,6 +100,13 @@ export class ImageConverter {
     return this.converted.size;
   }
 
+  /** Pictures on this page left alone because the extension may not read them. */
+  get blockedCounts(): Record<Blocked, number> {
+    const n = { access: 0, login: 0 };
+    this.blocked.forEach((reason) => n[reason]++);
+    return n;
+  }
+
   start() {
     if (!this.stopped) return;
     this.stopped = false;
@@ -114,6 +123,9 @@ export class ImageConverter {
     this.near.clear();
     for (const img of [...this.converted.keys()]) this.restore(img);
     this.seen = new WeakMap();
+    // Site access may change while stopped; blocked pictures are tried again on the next start.
+    for (const k of this.results.keys()) if (this.blocked.has(k.split('\n')[0])) this.results.delete(k);
+    this.blocked.clear();
   }
 
   applySettings(s: Settings) {
@@ -185,6 +197,7 @@ export class ImageConverter {
     if (blob === undefined) {
       const res = await tracker.image(url, await this.file(url), opts);
       if (res.error) console.debug(`[moutheyes] skipped picture (${res.error}): ${url.slice(0, 200)}`);
+      if (res.blocked) this.blocked.set(url, res.blocked);
       blob = res.blob;
       this.results.set(resultKey, blob);
     }

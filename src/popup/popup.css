@@ -45,6 +45,27 @@ body.off .status ~ * {
   margin: 6px 0 10px;
   min-height: 1.4em;
 }
+.notice {
+  margin: -4px 0 10px;
+  padding: 6px 8px;
+  border-left: 3px solid #f9ab00;
+  background: #2a2b2f;
+  color: #e8e8e8;
+  font-size: 12px;
+}
+.notice[hidden] {
+  display: none;
+}
+button.link {
+  display: block;
+  min-width: 0;
+  margin-top: 4px;
+  padding: 0;
+  background: none;
+  color: #8ab4f8;
+  font-weight: 500;
+  text-decoration: underline;
+}
 label {
   display: block;
   margin: 8px 0;

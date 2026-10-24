@@ -3,7 +3,7 @@
 // Talks to the content script over a MessagePort: video frames come in, get their faces tracked,
 // smoothed and measured, and go back; pictures go through the still-image pipeline (stills.ts).
 import { eyeSpots, mouthGeom, mouthWidth, type FaceGeom, type Landmarks } from '../shared/face';
-import type { FromHost, ToHost, TrackOptions } from '../shared/protocol';
+import type { FromHost, HostTokenMessage, ToHost, TrackOptions } from '../shared/protocol';
 import { convertImage } from './stills';
 import {
   colorModel, detectIn, grabSample, loadLandmarkers, measureColors, measureGains, measureSkin, roi, sameFace, searchLm,
@@ -189,8 +189,18 @@ function runFrame(msg: Extract<ToHost, { type: 'frame' }>) {
   }
 }
 
-window.addEventListener('message', (e) => {
-  if (port || e.data?.type !== 'moutheyes-connect' || !e.ports[0]) return;
+/** Set while a connection's token is being checked, so only one is ever accepted. */
+let connecting = false;
+
+window.addEventListener('message', async (e) => {
+  const { type, token } = e.data ?? {};
+  if (port || connecting || type !== 'moutheyes-connect' || typeof token !== 'string' || !e.ports[0]) return;
+  // Any page can frame this one; only Moutheyes' own content script knows a registered token.
+  connecting = true;
+  const check: HostTokenMessage = { type: 'host-token-check', token };
+  const ok = await chrome.runtime.sendMessage(check).catch(() => false);
+  connecting = false;
+  if (!ok) return;
   port = e.ports[0];
   port.onmessage = (ev: MessageEvent<ToHost>) => {
     const msg = ev.data;

@@ -8,7 +8,7 @@ import { applyPalette, GIFEncoder, quantize } from 'gifenc';
 import { Renderer } from '../render/renderer';
 import { eyeSpan, eyeSpots, mouthGeom, mouthWidth, type FaceGeom, type Landmarks } from '../shared/face';
 import { cacheKey, getEntry, outputKey, putEntry, readOutput, writeOutput, type ImageEntry } from '../shared/imagecache';
-import type { ImageOptions, ImageResult } from '../shared/protocol';
+import type { Blocked, ImageOptions, ImageResult } from '../shared/protocol';
 import {
   colorModel, detectIn, grabSample, loadStillLandmarker, measureColors, measureGains, roi, sameFace, stillLm, tiles, trackLm,
   type ColorState,
@@ -95,11 +95,28 @@ function closePicture(p: Picture) {
   p.anim?.frames.forEach((f) => f.close());
 }
 
-/** Fetches a picture the page couldn't read itself (host permissions make this CORS-exempt). */
+/**
+ * Fetches a picture the page couldn't read itself (host permissions make this CORS-exempt).
+ * Without cookies: the moutheyes version is shown in the page, which can read it, so a page
+ * mustn't be able to point an <img> at some other site's private picture and read it back.
+ */
 async function fetchFile(url: string): Promise<Blob> {
-  const res = await fetch(url, { credentials: 'include' });
+  if (!/^https?:/i.test(url)) throw new Error('unreadable (not a web address)');
+  // Without site access the fetch would be subject to CORS, which most picture hosts don't allow.
+  if (!(await chrome.permissions.contains({ origins: [`${new URL(url).origin}/*`] }))) {
+    throw new BlockedError('access', 'no site access');
+  }
+  const res = await fetch(url, { credentials: 'omit' });
+  if (res.status === 401 || res.status === 403) throw new BlockedError('login', `needs a login (HTTP ${res.status})`);
   if (!res.ok) throw new Error(`unreadable (HTTP ${res.status})`);
   return res.blob();
+}
+
+/** A picture the extension may not read. Not cached: access can be granted at any time. */
+class BlockedError extends Error {
+  constructor(readonly reason: Blocked, message: string) {
+    super(message);
+  }
 }
 
 /**
@@ -410,6 +427,7 @@ export async function convertImage(url: string, file: Blob | null, o: ImageOptio
       pic = await openPicture(file ?? (await fetchFile(url)));
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
+      if (e instanceof BlockedError) return { faces: 0, blob: null, cached: false, error, blocked: e.reason };
       if (key) await cached(putEntry({ key, checked: now, lastUsed: now, width: 0, height: 0, faces: [], error, outputs: {} }), undefined);
       return { faces: 0, blob: null, cached: false, error };
     }

@@ -4,3 +4,4 @@ models/
 *.log
 test/media/
 test/out/
+*.zip
