@@ -37,20 +37,3 @@ In `brave://extensions` (or `chrome://extensions`), turn on **Developer mode**, 
   animations. Work waits for idle time, and a lock shared by tabs lets one picture at a time use
   the GPU. Results are cached (IndexedDB + Cache Storage, 256 MB, least recently used evicted).
   Pictures from other sites are fetched by the extension, hence `<all_urls>` access.
-
-## With the 2D-3D Video Converter
-
-Both can run on the same video: the 3D extension converts the moutheyes picture. A video with
-moutheyes carries `data-moutheyes="<canvas id>"` and fires `moutheyes:change` and
-`moutheyes:frame` events.
-
-## Development
-
-```sh
-npm run watch       # rebuild on change, then reload the extension
-npm run typecheck
-npm run fetch-test-media && npm run e2e -- [--headful]   # screenshots in test/out/
-```
-
-Test media is cut from *Tears of Steel* (CC-BY Blender Foundation) with ffmpeg. e2e needs Brave
-or Chrome for Testing. `node scripts/make-icons.mjs` regenerates the icons.
