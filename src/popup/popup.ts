@@ -227,7 +227,17 @@ function renderOutput(key: keyof Settings, el: Control) {
   if (out && FORMAT[key]) out.textContent = FORMAT[key]!(Number(el.value));
 }
 
+/** Keeps each collapsible section open or closed as the user last left it. */
+function rememberSections() {
+  for (const d of document.querySelectorAll<HTMLDetailsElement>('details[id]')) {
+    const key = `popup.${d.id}.open`;
+    d.open = localStorage.getItem(key) === '1';
+    d.addEventListener('toggle', () => localStorage.setItem(key, d.open ? '1' : '0'));
+  }
+}
+
 async function init() {
+  rememberSections();
   const settings = await loadSettings();
   for (const key of Object.keys(settings) as (keyof Settings)[]) {
     const el = control(key);

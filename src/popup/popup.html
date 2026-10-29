@@ -20,35 +20,45 @@
       <label class="check" title="Moutheyes for videos: each page's main video gets it on its own; the button on a video when you hover it, and Alt+Shift+E, pick others. Unticking it stops them all."><input id="videos" type="checkbox" /> Videos</label>
     </div>
 
-    <label title="Size of each mouth relative to the eye it covers.">Mouth size <output for="mouthScale"></output>
-      <input id="mouthScale" type="range" min="0.8" max="2.5" step="0.05" />
-    </label>
+    <details class="section" id="sectionMouths">
+      <summary>Mouth Appearance</summary>
+      <label title="Size of each mouth relative to the eye it covers.">Mouth size <output for="mouthScale"></output>
+        <input id="mouthScale" type="range" min="0.8" max="2.5" step="0.05" />
+      </label>
 
-    <label title="How many faces per video get moutheyes. Each face costs about 20 ms of GPU time per frame.">Max Faces <output for="maxFaces"></output>
-      <input id="maxFaces" type="range" min="1" max="4" step="1" />
-    </label>
+      <label title="Each eye's mouth plays later than the real one: the eye on the left of the picture by this much, the right eye by twice as much, like a round.">Mouth echo <output for="mouthEcho"></output>
+        <input id="mouthEcho" type="range" min="0" max="0.5" step="0.05" />
+      </label>
 
-    <label title="Steadies the mouths when a face is still. Higher is steadier but trails a little behind quick movement.">Smoothing <output for="smoothing"></output>
-      <input id="smoothing" type="range" min="0" max="0.95" step="0.05" />
-    </label>
+      <label title="Leaves whatever is neither skin nor lips (captions, a hand, a microphone) out of the mouth copies. The mouth opening is exempt, for teeth and tongue. High values also cut out mustaches.">Object filter <output for="objectFilter"></output>
+        <input id="objectFilter" type="range" min="0" max="1" step="0.05" />
+      </label>
 
-    <label title="Each eye's mouth plays later than the real one: the eye on the left of the picture by this much, the right eye by twice as much, like a round.">Mouth echo <output for="mouthEcho"></output>
-      <input id="mouthEcho" type="range" min="0" max="0.5" step="0.05" />
-    </label>
+      <label class="check" title="Feathers the mouths only into skin and matches their tone to the skin around each eye.">
+        <input id="skinMatch" type="checkbox" /> Blend into skin
+      </label>
+    </details>
 
-    <label title="Leaves whatever is neither skin nor lips (captions, a hand, a microphone) out of the mouth copies. The mouth opening is exempt, for teeth and tongue. High values also cut out mustaches.">Object filter <output for="objectFilter"></output>
-      <input id="objectFilter" type="range" min="0" max="1" step="0.05" />
-    </label>
+    <details class="section" id="sectionTracking">
+      <summary>Face Tracking</summary>
+      <label title="How many faces per video get moutheyes. Each face costs about 20 ms of GPU time per frame.">Max Faces <output for="maxFaces"></output>
+        <input id="maxFaces" type="range" min="1" max="4" step="1" />
+      </label>
 
-    <label class="check" title="Feathers the mouths only into skin and matches their tone to the skin around each eye.">
-      <input id="skinMatch" type="checkbox" /> Blend into skin
-    </label>
-    <label class="check"><input id="showStats" type="checkbox" /> Show stats overlay</label>
+      <label title="Steadies the mouths when a face is still. Higher is steadier but trails a little behind quick movement.">Smoothing <output for="smoothing"></output>
+        <input id="smoothing" type="range" min="0" max="0.95" step="0.05" />
+      </label>
 
-    <div class="cache">
-      <span id="cacheStats">Image cache: …</span>
-      <button id="clearCache" class="small" title="Forget which pictures have faces and delete the stored moutheyes pictures.">Clear</button>
-    </div>
+      <label class="check"><input id="showStats" type="checkbox" /> Show stats overlay</label>
+    </details>
+
+    <details class="section" id="sectionCache">
+      <summary>Image Cache</summary>
+      <div class="cache">
+        <span id="cacheStats">Image cache: …</span>
+        <button id="clearCache" class="small" title="Forget which pictures have faces and delete the stored moutheyes pictures.">Clear</button>
+      </div>
+    </details>
 
     <footer>
       <kbd>Alt+Shift+E</kbd> toggles moutheyes on the video under the mouse

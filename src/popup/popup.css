@@ -96,14 +96,39 @@ kbd {
   display: flex;
   gap: 20px;
 }
+/* Collapsible option sections. */
+details.section {
+  border-top: 1px solid #333;
+  padding: 8px 0 2px;
+}
+details.section summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c8c8c8;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+details.section summary::-webkit-details-marker {
+  display: none;
+}
+details.section summary::before {
+  content: '▸';
+  color: #9aa0a6;
+  transition: transform 0.1s;
+}
+details.section[open] summary::before {
+  transform: rotate(90deg);
+}
 .cache {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #333;
+  margin: 8px 0;
   color: #9aa0a6;
   font-size: 11px;
 }
