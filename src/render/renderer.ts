@@ -158,6 +158,21 @@ void main() {
 
 export class TaintedVideoError extends Error {}
 
+/** Why the browser won't let us read this video's pixels, as a clause for the popup ("Moutheyes: ..."). */
+export function taintedVideoReason(video: HTMLVideoElement): string {
+  if (video.mediaKeys) return "this video is DRM-protected, so the browser won't let the extension read its pixels";
+  if (location.protocol === 'file:') {
+    return "the browser won't let extensions read the pixels of a video opened from a local file; serve the page over http instead (e.g. npx http-server)";
+  }
+  return "this video is protected (cross-origin or DRM), so the browser won't let the extension read its pixels";
+}
+
+/** taintedVideoReason() as a sentence, for a toast. */
+export function taintedVideoMessage(video: HTMLVideoElement): string {
+  const reason = taintedVideoReason(video);
+  return `${reason[0].toUpperCase()}${reason.slice(1)}.`;
+}
+
 /** A face's mouth at one moment: which history layer holds its crop, and where it was. */
 interface Snapshot {
   time: number;

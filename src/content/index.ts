@@ -1,8 +1,8 @@
 // Content script entry: finds videos, wires the hover button and keyboard shortcut, manages one
 // Session per moutheyes video, runs picture conversion, and answers the popup.
-import { TaintedVideoError } from '../render/renderer';
+import { TaintedVideoError, taintedVideoMessage, taintedVideoReason } from '../render/renderer';
 import type { FrameStatus } from '../shared/protocol';
-import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, type Settings } from '../shared/settings';
+import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
 import { ImageConverter } from './images';
 import { Session } from './session';
 import { Overlay } from './ui';
@@ -179,6 +179,12 @@ function main(): MoutheyesApi {
   /** Turns moutheyes on or off for this video, by hand (the button, the shortcut, the popup). */
   function toggle(video: HTMLVideoElement): boolean {
     if (!alive()) return false;
+    if (!videosOn()) {
+      // The hover button still shows while moutheyes is switched off; clicking it switches it back on.
+      const patch = { enabled: true, videos: true };
+      settings = { ...settings, ...patch };
+      void saveSettings(patch);
+    }
     const on = flip(video);
     auto.delete(video);
     autoPausedAt = on ? null : location.href;
@@ -204,14 +210,14 @@ function main(): MoutheyesApi {
           lastError = s.failure;
           failed.set(s.video, s.video.currentSrc);
         }
-      });
+      }, announce);
       session.start();
     } catch (e) {
       session?.stop();
       // Started on its own: the popup says why it failed, without a toast over every ad.
       if (e instanceof TaintedVideoError) {
-        lastError = "this video is protected (DRM), so the browser won't let the extension read its pixels";
-        if (announce) ui().toast("This video is protected (DRM), so the browser won't let the extension read its pixels.", 7000);
+        lastError = taintedVideoReason(video);
+        if (announce) ui().toast(taintedVideoMessage(video), 7000);
       } else {
         lastError = e instanceof Error ? e.message : String(e);
         if (announce) ui().toast(`Moutheyes failed to start: ${lastError}`, 7000);
@@ -237,12 +243,13 @@ function main(): MoutheyesApi {
       requestAnimationFrame(() => {
         moveQueued = false;
         const { x, y } = lastPoint;
-        if (!videosOn() || !alive()) return;
+        // Shown while switched off too (gray "Moutheyes: Off"), so it can be switched back on here.
+        if (!alive()) return;
         hovered = candidates().find((v) => {
           const r = v.getBoundingClientRect();
           return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
         }) ?? null;
-        if (hovered) ui().showButton(hovered, sessions.has(hovered));
+        if (hovered) ui().showButton(hovered, videosOn() && sessions.has(hovered));
       });
     },
     { passive: true, signal },

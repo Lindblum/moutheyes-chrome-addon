@@ -7,7 +7,7 @@
 // fires "moutheyes:change" when that turns on or off and "moutheyes:frame" after every new
 // frame. The canvas holds the whole frame at the video's resolution, letterboxed by CSS
 // object-fit like the video itself.
-import { Renderer, TaintedVideoError } from '../render/renderer';
+import { Renderer, TaintedVideoError, taintedVideoMessage, taintedVideoReason } from '../render/renderer';
 import type { FaceGeom } from '../shared/face';
 import type { Settings } from '../shared/settings';
 import { tracker, type TrackResult } from '../tracker/bridge';
@@ -17,6 +17,19 @@ import type { Overlay } from './ui';
 const MAX_CAPTURE_SIDE = 1920;
 
 let nextStream = 1;
+
+/** Whether the browser lets us read this bitmap's pixels (it won't for cross-origin video). */
+function isReadable(bitmap: ImageBitmap): boolean {
+  // A fresh canvas each time: drawing an unreadable bitmap taints a canvas for good.
+  const probe = new OffscreenCanvas(1, 1).getContext('2d')!;
+  probe.drawImage(bitmap, 0, 0, 1, 1);
+  try {
+    probe.getImageData(0, 0, 1, 1);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export class Session {
   readonly canvas = document.createElement('canvas');
@@ -31,6 +44,8 @@ export class Session {
   private faces: FaceGeom[] = [];
   private trackMsAvg = 0;
   private trackFailed = '';
+  /** The video source whose pixels we've confirmed we may read. */
+  private readableSrc: string | null = null;
   private statsEl: HTMLDivElement | null = null;
   private renderFrames = 0;
   private statsTimer = 0;
@@ -41,6 +56,8 @@ export class Session {
     private settings: Settings,
     private overlay: Overlay,
     private onEnd: (s: Session) => void,
+    /** Turned on by hand, so failures get a toast (on its own, only the popup says why). */
+    private announce = true,
   ) {
     this.renderer = new Renderer(this.canvas);
   }
@@ -138,6 +155,13 @@ export class Session {
     if (frameChanged && !this.capturing && tracker.state === 'ready' && !tracker.busy) this.capture();
   };
 
+  /** The browser won't let us read the video's pixels: say why and turn off. */
+  private failTainted() {
+    if (this.announce) this.overlay.toast(taintedVideoMessage(this.video), 7000);
+    this.trackFailed = taintedVideoReason(this.video);
+    this.stop();
+  }
+
   /** Grabs the current video frame and sends it through the tracker. */
   private async capture() {
     const v = this.video;
@@ -150,9 +174,28 @@ export class Session {
     const s = this.settings;
     let result: TrackResult | null = null;
     try {
-      const bitmap = await createImageBitmap(v, k < 1
-        ? { resizeWidth: Math.round(v.videoWidth * k), resizeHeight: Math.round(v.videoHeight * k), resizeQuality: 'medium' }
-        : {});
+      let bitmap: ImageBitmap;
+      try {
+        bitmap = await createImageBitmap(v, k < 1
+          ? { resizeWidth: Math.round(v.videoWidth * k), resizeHeight: Math.round(v.videoHeight * k), resizeQuality: 'medium' }
+          : {});
+      } catch (e) {
+        // tick() only captures once the video has a frame, so this means the browser won't
+        // let us read it (Chrome reports a cross-origin video as InvalidStateError here).
+        if (e instanceof DOMException && (e.name === 'SecurityError' || e.name === 'InvalidStateError')) {
+          return this.failTainted();
+        }
+        throw e;
+      }
+      // A cross-origin video still gives a bitmap, just one nothing may read (posting it to the
+      // tracker fails with a DataCloneError), so check once per source.
+      if (this.readableSrc !== v.currentSrc) {
+        if (!isReadable(bitmap)) {
+          bitmap.close();
+          return this.failTainted();
+        }
+        this.readableSrc = v.currentSrc;
+      }
       result = await tracker.track(this.stream, bitmap, time, reset, {
         mouthScale: s.mouthScale,
         maxFaces: s.maxFaces,
@@ -175,11 +218,7 @@ export class Session {
       }
       this.renderer.uploadFrame(result.bitmap);
     } catch (e) {
-      if (e instanceof TaintedVideoError) {
-        this.overlay.toast("This video is protected (DRM or cross-origin), so the browser won't let the extension read its pixels.", 7000);
-        this.trackFailed = "this video is protected (DRM or cross-origin), so the browser won't let the extension read its pixels";
-        return this.stop();
-      }
+      if (e instanceof TaintedVideoError) return this.failTainted();
       throw e;
     } finally {
       result.bitmap.close();

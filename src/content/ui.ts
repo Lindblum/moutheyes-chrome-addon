@@ -18,6 +18,10 @@ const CSS = `
   border-radius: 4px; font: 500 11px/1.3 ui-monospace, monospace; white-space: pre; }
 `;
 
+// Hover buttons of our sibling add-ons stack top-left in a fixed order (same size, so rows
+// line up): Moutheyes, Video Filters, 2D-3D Video Converter.
+const BUTTON_ROW = 0;
+
 export class Overlay {
   readonly host = document.createElement('moutheyes-overlay');
   private layer: HTMLDivElement;
@@ -68,9 +72,8 @@ export class Overlay {
     this.buttonTarget = video;
     this.button.textContent = active ? 'Moutheyes: On' : 'Moutheyes: Off';
     this.button.classList.toggle('on', active);
-    // Top left, one row down: the 2D-3D Video Converter's button (same size) takes the first row.
     this.button.style.left = `${Math.max(4, r.left + 12)}px`;
-    this.button.style.top = `${Math.max(4, r.top + 12) + this.button.offsetHeight + 6}px`;
+    this.button.style.top = `${Math.max(4, r.top + 12) + BUTTON_ROW * (this.button.offsetHeight + 6)}px`;
     this.button.classList.add('show');
     clearTimeout(this.hideTimer);
     this.hideTimer = window.setTimeout(() => this.hideButton(), 2500);
