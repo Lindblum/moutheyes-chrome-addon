@@ -1,11 +1,11 @@
 // Content script entry: finds videos, wires the hover button and keyboard shortcut, manages one
 // Session per moutheyes video, runs picture conversion, and answers the popup.
 import { TaintedVideoError, taintedVideoMessage, taintedVideoReason } from '../render/renderer';
-import type { FrameStatus } from '../shared/protocol';
+import type { FrameStatus, StatusChangedMessage } from '../shared/protocol';
 import { DEFAULT_SETTINGS, loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
 import { ImageConverter } from './images';
 import { Session } from './session';
-import { Overlay } from './ui';
+import { Overlay, type ButtonState } from './ui';
 
 const MIN_W = 200;
 const MIN_H = 112;
@@ -63,6 +63,11 @@ function main(): MoutheyesApi {
   /** Why moutheyes last failed to start, or stopped on its own (shown in the popup). */
   let lastError = '';
   const videosOn = () => settings.enabled && settings.videos;
+  /** Lets an open popup show a video starting or stopping at once, not at its next check. */
+  const notifyPopup = () => {
+    if (!chrome.runtime?.id) return;
+    chrome.runtime.sendMessage({ type: 'status-changed' } satisfies StatusChangedMessage).catch(() => {});
+  };
 
   function apply(s: Settings) {
     if (signal.aborted) return;
@@ -109,6 +114,11 @@ function main(): MoutheyesApi {
    */
   const failed = new WeakMap<HTMLVideoElement, string>();
   const hasFailed = (v: HTMLVideoElement) => failed.get(v) === v.currentSrc;
+  /** Videos whose pixels the browser won't let us read, with what they were playing then. */
+  const unreadable = new WeakMap<HTMLVideoElement, string>();
+  const isUnreadable = (v: HTMLVideoElement) => !!v.mediaKeys || unreadable.get(v) === v.currentSrc;
+  const buttonState = (v: HTMLVideoElement): ButtonState =>
+    videosOn() && sessions.has(v) ? 'on' : isUnreadable(v) ? 'unavailable' : 'off';
   /**
    * The page address when a video was turned off by hand: nothing starts on its own there until
    * a video is turned on by hand (otherwise turning one off would just move moutheyes to the
@@ -149,7 +159,7 @@ function main(): MoutheyesApi {
     if (!flip(video, false)) failed.set(video, video.currentSrc);
     else {
       auto.add(video);
-      if (video === hovered) ui().showButton(video, true);
+      if (video === hovered) ui().showButton(video, 'on');
     }
   }
   const autoTimer = window.setInterval(autoStart, AUTO_START_MS);
@@ -189,7 +199,7 @@ function main(): MoutheyesApi {
     auto.delete(video);
     autoPausedAt = on ? null : location.href;
     if (on) failed.delete(video);
-    if (video === hovered) ui().showButton(video, on);
+    if (video === hovered) ui().showButton(video, buttonState(video));
     return on;
   }
 
@@ -210,12 +220,16 @@ function main(): MoutheyesApi {
           lastError = s.failure;
           failed.set(s.video, s.video.currentSrc);
         }
+        if (s.unreadable) unreadable.set(s.video, s.video.currentSrc);
+        overlay?.setButtonState(s.video, buttonState(s.video));
+        notifyPopup();
       }, announce);
       session.start();
     } catch (e) {
       session?.stop();
       // Started on its own: the popup says why it failed, without a toast over every ad.
       if (e instanceof TaintedVideoError) {
+        unreadable.set(video, video.currentSrc);
         lastError = taintedVideoReason(video);
         if (announce) ui().toast(taintedVideoMessage(video), 7000);
       } else {
@@ -227,6 +241,7 @@ function main(): MoutheyesApi {
     }
     lastError = '';
     sessions.set(video, session);
+    notifyPopup();
     if (announce) ui().toast('Moutheyes on', 2000);
     return true;
   }
@@ -249,7 +264,7 @@ function main(): MoutheyesApi {
           const r = v.getBoundingClientRect();
           return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
         }) ?? null;
-        if (hovered) ui().showButton(hovered, videosOn() && sessions.has(hovered));
+        if (hovered) ui().showButton(hovered, buttonState(hovered));
       });
     },
     { passive: true, signal },

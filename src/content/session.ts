@@ -44,6 +44,8 @@ export class Session {
   private faces: FaceGeom[] = [];
   private trackMsAvg = 0;
   private trackFailed = '';
+  /** Stopped because the browser won't let us read the video's pixels. */
+  unreadable = false;
   /** The video source whose pixels we've confirmed we may read. */
   private readableSrc: string | null = null;
   private statsEl: HTMLDivElement | null = null;
@@ -159,6 +161,7 @@ export class Session {
   private failTainted() {
     if (this.announce) this.overlay.toast(taintedVideoMessage(this.video), 7000);
     this.trackFailed = taintedVideoReason(this.video);
+    this.unreadable = true;
     this.stop();
   }
 

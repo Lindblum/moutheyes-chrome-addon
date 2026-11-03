@@ -65,6 +65,9 @@ export type FromHost =
  */
 export type HostTokenMessage = { type: 'host-token'; token: string } | { type: 'host-token-check'; token: string };
 
+/** Sent by a content script when moutheyes starts or stops on a video, so an open popup updates at once. */
+export type StatusChangedMessage = { type: 'status-changed' };
+
 /** What a frame's content script reports to the popup (see MoutheyesApi in content/index.ts). */
 export interface FrameStatus {
   videos: number;

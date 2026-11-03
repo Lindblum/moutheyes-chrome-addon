@@ -1,7 +1,7 @@
 import { cacheStats, clearCache } from '../shared/imagecache';
 import type { MoutheyesApi } from '../content/index';
-import type { Blocked, FrameStatus } from '../shared/protocol';
-import { loadSettings, saveSettings, type Settings } from '../shared/settings';
+import type { Blocked, FrameStatus, StatusChangedMessage } from '../shared/protocol';
+import { loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const statusEl = $('status');
@@ -312,6 +312,27 @@ async function init() {
       await saveSettings({ enabled });
       await settled();
     });
+  });
+  // The page can change things too: its hover button and Alt+Shift+E switch Moutheyes back on
+  // and start or stop videos. Show that at once rather than at the next check.
+  /** Asks again now; an answer already on its way is out of date. */
+  const refreshNow = () => {
+    if (busy) return; // a click here made the change, and shows its result itself
+    generation++;
+    refresh(true);
+  };
+  onSettingsChanged((s) => {
+    // Sliders here save on every move; only the switches can change from the page.
+    if (s.enabled === enabled && s.videos === videosOn && s.images === imagesOn) return;
+    enabled = s.enabled;
+    videosOn = s.videos;
+    imagesOn = s.images;
+    $<HTMLInputElement>('videos').checked = s.videos;
+    $<HTMLInputElement>('images').checked = s.images;
+    refreshNow();
+  });
+  chrome.runtime.onMessage.addListener((msg: StatusChangedMessage) => {
+    if (msg?.type === 'status-changed') refreshNow();
   });
   refresh();
   showCache();
