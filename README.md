@@ -4,6 +4,8 @@ A Chrome/Brave extension that puts each face's own moving mouth over its eyes, i
 real time and in the pictures on pages. A live version of moutheyes-py. Everything runs locally
 on your GPU with MediaPipe; nothing leaves your machine. DRM-protected video can't be read.
 
+![Moutheyes on a YouTube video: the face's smiling mouth shown over both eyes](docs/screenshot.png)
+
 ## Install
 
 ```sh
